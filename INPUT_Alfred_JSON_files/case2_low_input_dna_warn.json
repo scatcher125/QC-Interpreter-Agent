@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_002_low_input_dna",
+    "Mapped": 75000000,
+    "MappedFraction": 0.943,
+    "DuplicateMarked": 28500000,
+    "DuplicateFraction": 0.380,
+    "MedianMAPQ": 55,
+    "FractionInBed": 0.790,
+    "MedianCoverage": 52.1,
+    "SDCoverage": 38.4,
+    "EnrichmentOverBed": 14.2,
+    "MedianInsertSize": 163,
+    "SDInsertSize": 61.2,
+    "GCContent": 0.418
+}

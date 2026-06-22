@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_008_degraded_dna",
+    "Mapped": 38000000,
+    "MappedFraction": 0.481,
+    "DuplicateMarked": 7600000,
+    "DuplicateFraction": 0.200,
+    "MedianMAPQ": 14,
+    "FractionInBed": 0.412,
+    "MedianCoverage": 8.9,
+    "SDCoverage": 19.8,
+    "EnrichmentOverBed": 2.1,
+    "MedianInsertSize": 94,
+    "SDInsertSize": 38.1,
+    "GCContent": 0.438
+}

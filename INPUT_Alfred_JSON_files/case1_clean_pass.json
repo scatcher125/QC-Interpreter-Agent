@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_001_clean",
+    "Mapped": 87500000,
+    "MappedFraction": 0.971,
+    "DuplicateMarked": 8750000,
+    "DuplicateFraction": 0.100,
+    "MedianMAPQ": 58,
+    "FractionInBed": 0.821,
+    "MedianCoverage": 87.3,
+    "SDCoverage": 32.1,
+    "EnrichmentOverBed": 18.4,
+    "MedianInsertSize": 185,
+    "SDInsertSize": 52.3,
+    "GCContent": 0.412
+}

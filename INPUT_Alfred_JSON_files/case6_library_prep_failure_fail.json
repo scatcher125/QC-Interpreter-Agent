@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_006_library_prep_failure",
+    "Mapped": 65000000,
+    "MappedFraction": 0.912,
+    "DuplicateMarked": 42250000,
+    "DuplicateFraction": 0.650,
+    "MedianMAPQ": 52,
+    "FractionInBed": 0.741,
+    "MedianCoverage": 19.3,
+    "SDCoverage": 44.7,
+    "EnrichmentOverBed": 11.3,
+    "MedianInsertSize": 142,
+    "SDInsertSize": 48.9,
+    "GCContent": 0.421
+}

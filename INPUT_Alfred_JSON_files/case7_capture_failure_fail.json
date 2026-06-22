@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_007_capture_failure",
+    "Mapped": 70000000,
+    "MappedFraction": 0.934,
+    "DuplicateMarked": 8400000,
+    "DuplicateFraction": 0.120,
+    "MedianMAPQ": 54,
+    "FractionInBed": 0.187,
+    "MedianCoverage": 3.8,
+    "SDCoverage": 12.1,
+    "EnrichmentOverBed": 0.6,
+    "MedianInsertSize": 176,
+    "SDInsertSize": 53.4,
+    "GCContent": 0.408
+}

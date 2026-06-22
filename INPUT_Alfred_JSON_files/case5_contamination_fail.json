@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_005_contamination",
+    "Mapped": 31500000,
+    "MappedFraction": 0.420,
+    "DuplicateMarked": 3780000,
+    "DuplicateFraction": 0.120,
+    "MedianMAPQ": 34,
+    "FractionInBed": 0.391,
+    "MedianCoverage": 12.1,
+    "SDCoverage": 28.9,
+    "EnrichmentOverBed": 2.8,
+    "MedianInsertSize": 171,
+    "SDInsertSize": 74.3,
+    "GCContent": 0.631
+}

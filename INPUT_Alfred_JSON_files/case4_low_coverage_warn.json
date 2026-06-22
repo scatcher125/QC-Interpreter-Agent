@@ -1,0 +1,15 @@
+{
+    "sample_id": "SAMPLE_004_low_coverage",
+    "Mapped": 28000000,
+    "MappedFraction": 0.961,
+    "DuplicateMarked": 2800000,
+    "DuplicateFraction": 0.100,
+    "MedianMAPQ": 57,
+    "FractionInBed": 0.803,
+    "MedianCoverage": 12.4,
+    "SDCoverage": 14.3,
+    "EnrichmentOverBed": 16.1,
+    "MedianInsertSize": 182,
+    "SDInsertSize": 50.7,
+    "GCContent": 0.415
+}

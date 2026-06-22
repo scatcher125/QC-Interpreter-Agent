@@ -1,0 +1,30 @@
+
+================================================================================
+  QC REPORT — SAMPLE_003_low_ontarget
+  Overall Status: ⚠️ WARN
+================================================================================
+
+METRICS SUMMARY
+---------------
+  ℹ️ Mapped                 82000000
+  ✅ MappedFraction         0.955
+  ℹ️ DuplicateMarked        9840000
+  ✅ DuplicateFraction      0.12
+  ✅ MedianMAPQ             56
+  ⚠️ FractionInBed          0.621
+  ✅ MedianCoverage         44.7
+  ℹ️ SDCoverage             41.2
+  ⚠️ EnrichmentOverBed      1.4
+  ℹ️ MedianInsertSize       178
+  ℹ️ SDInsertSize           55.1
+  ✅ GCContent              0.409
+
+  Legend: ✅ PASS  ⚠️ WARN  ❌ FAIL  ℹ️ INFO (not thresholded)  ❓ MISSING
+
+BIOLOGICAL INTERPRETATION
+-----------------------------------
+This sample's overall quality is acceptable for analysis, though it shows some inefficiency. While the median coverage across your targeted exome regions is good at 44.7x, only 62.1% of the sequencing data actually landed on those intended regions. This means a significant portion of the sequencing effort was spent on non-exome areas, resulting in lower enrichment of your targets than expected.
+
+You can certainly proceed with downstream analysis like variant calling. However, be aware that due to the lower on-target rate, some specific exome regions might have less coverage than ideal, and the overall sequencing was less cost-effective. For future samples, optimizing the library preparation to improve the on-target rate would yield more valuable data per sequencing run.
+
+================================================================================
