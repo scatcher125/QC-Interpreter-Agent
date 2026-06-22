@@ -22,6 +22,10 @@ Three LangGraph nodes in sequence:
 
 ## Setup
 
+Clone this repository using instructions found here [GitHub Docs: Cloning a Repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository). Navigate to the main directory in your user interface of choice.
+
+Load required Python packages.
+
 ```bash
 pip install -r requirements.txt
 ```
