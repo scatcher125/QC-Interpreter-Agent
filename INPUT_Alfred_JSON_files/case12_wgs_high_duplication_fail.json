@@ -1,0 +1,13 @@
+{
+    "sample_id": "SAMPLE_012_wgs_high_duplication",
+    "Mapped": 812000000,
+    "MappedFraction": 0.962,
+    "DuplicateMarked": 293132000,
+    "DuplicateFraction": 0.361,
+    "MedianMAPQ": 58,
+    "MedianCoverage": 24.6,
+    "SDCoverage": 9.8,
+    "MedianInsertSize": 341,
+    "SDInsertSize": 121.4,
+    "GCContent": 0.427
+}

@@ -1,0 +1,13 @@
+{
+    "sample_id": "SAMPLE_011_wgs_contamination",
+    "Mapped": 302000000,
+    "MappedFraction": 0.435,
+    "DuplicateMarked": 17516000,
+    "DuplicateFraction": 0.058,
+    "MedianMAPQ": 57,
+    "MedianCoverage": 13.9,
+    "SDCoverage": 5.2,
+    "MedianInsertSize": 388,
+    "SDInsertSize": 112.7,
+    "GCContent": 0.548
+}

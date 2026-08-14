@@ -1,0 +1,13 @@
+{
+    "sample_id": "SAMPLE_010_wgs_low_coverage",
+    "Mapped": 470000000,
+    "MappedFraction": 0.975,
+    "DuplicateMarked": 28670000,
+    "DuplicateFraction": 0.061,
+    "MedianMAPQ": 59,
+    "MedianCoverage": 21.4,
+    "SDCoverage": 6.8,
+    "MedianInsertSize": 398,
+    "SDInsertSize": 94.2,
+    "GCContent": 0.408
+}

@@ -1,0 +1,13 @@
+{
+    "sample_id": "SAMPLE_009_wgs_clean",
+    "Mapped": 780000000,
+    "MappedFraction": 0.988,
+    "DuplicateMarked": 32760000,
+    "DuplicateFraction": 0.042,
+    "MedianMAPQ": 60,
+    "MedianCoverage": 34.2,
+    "SDCoverage": 7.1,
+    "MedianInsertSize": 412,
+    "SDInsertSize": 98.4,
+    "GCContent": 0.410
+}
