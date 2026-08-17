@@ -179,6 +179,6 @@ for future runs.
 - ~~Process WGS samples~~
 - ~~Markdown report output to improve visual appeal~~
 - Batch processing across multiple samples.
-- Mermaid workflow diagram: Once the program supports more analysis types, documenting the exact nodes for a workflow will become more critical.
+- ~~Mermaid workflow diagram: Once the program supports more analysis types, documenting the exact nodes for a workflow will become more critical.~~
 - Email notification integration.
 - RAG over past Alfred QC outputs to contextualize current sample against cohort.
