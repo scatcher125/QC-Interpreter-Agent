@@ -331,12 +331,7 @@ BIOLOGICAL INTERPRETATION
 def workflow_mermaid(assay: str | None = None) -> str:
     """
     Render the compiled LangGraph as a fenced Mermaid block for embedding in
-    Markdown reports. Generated from the compiled graph, so it cannot drift out
-    of sync with the node and edge definitions. If `assay` is given, the branch
-    that actually ran is shaded. Returns a short note instead of raising if
-    rendering fails, so a diagram problem can never cost us the report.
-
-    Markdown reports only — the plain-text report never includes a diagram.
+    Markdown reports. Generated from the compiled graph.
     """
     try:
         body = build_graph().get_graph().draw_mermaid().strip()
