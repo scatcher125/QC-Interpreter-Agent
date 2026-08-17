@@ -14,17 +14,19 @@
 # Output: Report including PASS/WARN/FAIL status and plain English summary.
 # Usage:
 #   python qc_agent.py --input sample_qc.json.gz
-#   python qc_agent.py --input sample_qc.json.gz --output report.txt
+#   python qc_agent.py --input sample_qc.json.gz --output report.md
 #   python qc_agent.py --input sample_qc.json.gz --assay wgs
 #   python qc_agent.py --input sample_qc.json.gz --model gemini-2.5-flash
 #   python qc_agent.py --input sample_qc.json.gz --model claude-3-5-sonnet-20241022 --provider anthropic
 #   python qc_agent.py --input sample_qc.json --model gpt-4o --provider openai
+#   python qc_agent.py --diagram > docs/workflow.mmd
 # ---------
 
 # load requirements
 import json
 import gzip
 import argparse
+from functools import lru_cache
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain.chat_models import init_chat_model
@@ -324,8 +326,72 @@ BIOLOGICAL INTERPRETATION
 """
     return {**state, "output_report": report}
 
+
+# function: render the compiled graph as a Mermaid diagram for Markdown reports
+def workflow_mermaid(assay: str | None = None) -> str:
+    """
+    Render the compiled LangGraph as a fenced Mermaid block for embedding in
+    Markdown reports. Generated from the compiled graph, so it cannot drift out
+    of sync with the node and edge definitions. If `assay` is given, the branch
+    that actually ran is shaded. Returns a short note instead of raising if
+    rendering fails, so a diagram problem can never cost us the report.
+
+    Markdown reports only — the plain-text report never includes a diagram.
+    """
+    try:
+        body = build_graph().get_graph().draw_mermaid().strip()
+
+        # format for improved visualization
+        if body.startswith("---"):
+            end = body.find("---", 3)
+            if end != -1:
+                body = body[end + 3:].lstrip()
+    except Exception as exc:
+        return f"\n## Workflow\n\n_Diagram unavailable: {type(exc).__name__}: {exc}_\n"
+
+    if assay in ASSAY_CONFIG:
+        body += (
+            "\n    classDef taken fill:#d5f5d5,stroke:#2e7d32,stroke-width:2px;"
+            f"\n    class parse_qc_{assay} taken;"
+        )
+    return f"\n## Workflow\n\n```mermaid\n{body}\n```\n"
+
+# function: assemble the report as Markdown for rendered contexts
+def format_report_markdown(state: QCState) -> str:
+    """
+    Markdown variant of the report. Uses a table so alignment survives proportional fonts,
+    and embeds the workflow diagram.
+    """
+    metrics = state["parsed_metrics"]
+    evaluated = metrics["evaluated"]
+    icons = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌", "INFO": "ℹ️", "MISSING": "❓"}
+    rows = []
+    for metric, result in evaluated.items():
+        value = result["value"]
+        shown = value if value is not None else "N/A"
+        rows.append(f"| {icons.get(result['status'], '')} | {metric} | {shown} | {result['status']} |")
+    return f"""# QC Report — {metrics['sample_id']}
+
+**Assay:** {metrics.get('assay_label', '')}  
+**Overall Status:** {icons.get(state['pass_fail'], '')} {state['pass_fail']}
+
+## Metrics Summary
+
+|  | Metric | Value | Status |
+|--|--------|-------|--------|
+{chr(10).join(rows)}
+
+Legend: ✅ PASS ⚠️ WARN ❌ FAIL ℹ️ INFO (not thresholded) ❓ MISSING
+
+## Biological Interpretation
+
+{state['llm_summary']}
+{workflow_mermaid(metrics.get('assay_type'))}
+"""
+
 # function: Build LangGraph
-def build_graph() -> StateGraph:
+@lru_cache(maxsize=1)
+def build_graph():
     """
     route_assay ──┬─→ parse_qc_wes ─┐
                   └─→ parse_qc_wgs ─┴─→ llm_summary → format_report → END
@@ -351,7 +417,7 @@ def build_graph() -> StateGraph:
 # Main function
 def main():
     parser = argparse.ArgumentParser(description="LangGraph QC Interpreter Agent")
-    parser.add_argument("--input", required=True, help="Path to QC JSON file (.json or .json.gz)")
+    parser.add_argument("--input", help="Path to QC JSON file (.json or .json.gz)")
     parser.add_argument("--output", default=None, help="Optional path to save report")
     parser.add_argument("--model", default="gemini-2.5-flash", help="LLM model name (default: gemini-2.5-flash)")
     parser.add_argument("--provider", default="google_genai",
@@ -360,7 +426,16 @@ def main():
     parser.add_argument("--assay", default="wes", choices=["wes", "wgs"], type=str.lower,
                         help="Assay type, selects threshold set and interpretation context "
                              "(default: wes)")
+    parser.add_argument("--diagram", action="store_true",
+                        help="Print the workflow graph as a Mermaid diagram and exit")
     args = parser.parse_args()
+    # Mermaid diagram is generated from the compiled graph, so it cannot drift
+    # out of sync with the node and edge definitions above.
+    if args.diagram:
+        print(build_graph().get_graph().draw_mermaid())
+        return
+    if not args.input:
+        parser.error("--input is required unless --diagram is given")
     qc_data = load_qc_json(args.input)
     graph = build_graph()
     result = graph.invoke({
@@ -371,8 +446,12 @@ def main():
     })
     print(result["output_report"])
     if args.output:
+        if args.output.lower().endswith((".md", ".markdown")):
+            text = format_report_markdown(result)
+        else:
+            text = result["output_report"]
         with open(args.output, "w", encoding="utf-8") as f:
-            f.write(result["output_report"])
+            f.write(text)
         print(f"Report saved to {args.output}")
 
 if __name__ == "__main__":
