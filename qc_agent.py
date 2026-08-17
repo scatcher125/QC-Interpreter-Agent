@@ -1,31 +1,35 @@
 # QC Interpreter Agent for Alfred BAM Alignment Statistics
 # Reva S
-# 07-Jun-206
-
+# 07-Jun-2026
+#
 # DESCRIPTION
 # QC Tool: Alfred is an efficient and versatile BAM alignment QC tool.
 # Input:
-# - Alfred BAM alignment QC `*.json.gz` output file from standard 30x Illumina whole exome 
-#   sequencing on human data.
-# - Agent uses OpenAI by default but can be configured to use other LLM providers supported by LangChain.
-# Output: Report including PASS or FAIL status and plain English summary.
+# - Alfred BAM alignment QC `*.json.gz` (or `*.json`) output file from 30x Illumina whole exome (WES) 
+#   or whole genome (WGS) sequencing on human data.
+# - Assay type is selected with --assay and determines the threshold set, which metrics are reported, 
+#  and the interpretation context given to the LLM.
+# - Agent uses free Gemini LLM by default but can be configured to use other LLM providers supported
+#   by LangChain (OpenAI, Anthropic etc.).
+# Output: Report including PASS/WARN/FAIL status and plain English summary.
 # Usage:
-#   python qc_agent.py --input sample_qc.json
-#   python qc_agent.py --input sample_qc.json --output report.txt
-#   python qc_agent.py --input sample_qc.json --model gemini-2.5-flash
-#   python qc_agent.py --input sample_qc.json --model claude-3-5-sonnet-20241022 --provider anthropic
+#   python qc_agent.py --input sample_qc.json.gz
+#   python qc_agent.py --input sample_qc.json.gz --output report.txt
+#   python qc_agent.py --input sample_qc.json.gz --assay wgs
+#   python qc_agent.py --input sample_qc.json.gz --model gemini-2.5-flash
+#   python qc_agent.py --input sample_qc.json.gz --model claude-3-5-sonnet-20241022 --provider anthropic
 #   python qc_agent.py --input sample_qc.json --model gpt-4o --provider openai
 # ---------
 
 # load requirements
 import json
+import gzip
 import argparse
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain.chat_models import init_chat_model
 
-# NODE 1
-# Define "State" object
+# STATE
 class QCState(TypedDict):
     raw_input: dict          # Raw QC JSON loaded from file
     parsed_metrics: dict     # Cleaned structured QC metrics
@@ -36,15 +40,14 @@ class QCState(TypedDict):
     model_provider: str      # LLM provider passed through state
     assay_type: str          # "wes" or "wgs" — selects threshold set and prompt
 
-## ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # ASSAY CONFIGURATION
-# Each assay defines its own threshold set, metric field order, INFO-only
-# metrics, and LLM prompt glossary. Fraction metrics are 0-1, not percentages.
+# Each assay defines its own threshold set and LLM prompt glossary. Fraction metrics are 0-1.
 # ---------------------------------------------------------------------------
 
-# Calibrated for 30x Illumina whole EXOME sequencing on human data.
+# QC Metric thresholds calibrated for 30x Illumina whole EXOME sequencing on human data.
 WES_QC_THRESHOLDS = {
-    "MappedFraction":    {"warn_low": 0.75, "fail_low": 0.50},   # alignment quality
+    "MappedFraction":    {"warn_low": 0.75, "fail_low": 0.50},    # alignment quality
     "DuplicateFraction": {"warn_high": 0.35, "fail_high": 0.50},  # library complexity
     "MedianMAPQ":        {"warn_low": 30,   "fail_low": 20},      # mapping confidence
     "FractionInBed":     {"warn_low": 0.70, "fail_low": 0.35},    # on-target rate
@@ -54,38 +57,24 @@ WES_QC_THRESHOLDS = {
                           "warn_high": 0.60, "fail_high": 0.80},
 }
 
-# Calibrated for 30x Illumina whole GENOME sequencing on human data.
-# Differences from WES, and why:
-#   - FractionInBed / EnrichmentOverBed are ABSENT, not demoted. There is no
-#     capture step in WGS, so these are undefined rather than merely
-#     uninformative. Omitting them keeps the MISSING -> WARN rule from firing
-#     on every WGS sample.
-#   - DuplicateFraction is tighter: PCR-free WGS libraries typically run 1-10%.
-#   - MedianCoverage is recentred on a ~30x genome-wide target.
-#   - GCContent is recentred on the whole-genome value (~0.41) rather than the
-#     GC-rich exome value.
-#   - CoverageCV is PROMOTED to a thresholded metric. Coverage evenness is far
-#     more diagnostic genome-wide than it is over small capture targets.
+# QC Metric thresholds calibrated for 30x Illumina whole GENOME sequencing on human data.
 WGS_QC_THRESHOLDS = {
     "MappedFraction":    {"warn_low": 0.75, "fail_low": 0.50},
     "DuplicateFraction": {"warn_high": 0.20, "fail_high": 0.30},
     "MedianMAPQ":        {"warn_low": 30,   "fail_low": 20},
     "MedianCoverage":    {"warn_low": 25.0, "fail_low": 15.0},
-    "CoverageCV":        {"warn_high": 0.35, "fail_high": 0.50},
+    "SDCoverage":        {"warn_high": 10.0, "fail_high": 15.0},
     "GCContent":         {"warn_low": 0.38, "fail_low": 0.34,
                           "warn_high": 0.45, "fail_high": 0.50},
 }
 
-# Backwards-compatible alias for any external code importing the old name.
-QC_THRESHOLDS = WES_QC_THRESHOLDS
-
-# Metrics reported as context only; excluded from the PASS/WARN/FAIL rollup.
+# Metrics reported as context; excluded from PASS/WARN/FAIL calculations.
 WES_INFO_ONLY = {"Mapped", "DuplicateMarked", "SDCoverage",
                  "MedianInsertSize", "SDInsertSize"}
-WGS_INFO_ONLY = {"Mapped", "DuplicateMarked", "SDCoverage",
-                 "MedianInsertSize", "SDInsertSize"}
+WGS_INFO_ONLY = {"Mapped", "DuplicateMarked", "MedianInsertSize", 
+                 "SDInsertSize"}
 
-# Field order controls the order metrics appear in the report.
+# Order of metrics in report.
 WES_METRIC_FIELDS = [
     "Mapped", "MappedFraction", "DuplicateMarked", "DuplicateFraction",
     "MedianMAPQ", "FractionInBed", "MedianCoverage", "SDCoverage",
@@ -93,10 +82,11 @@ WES_METRIC_FIELDS = [
 ]
 WGS_METRIC_FIELDS = [
     "Mapped", "MappedFraction", "DuplicateMarked", "DuplicateFraction",
-    "MedianMAPQ", "MedianCoverage", "SDCoverage", "CoverageCV",
-    "MedianInsertSize", "SDInsertSize", "GCContent",
+    "MedianMAPQ", "MedianCoverage", "SDCoverage", "MedianInsertSize", 
+    "SDInsertSize", "GCContent",
 ]
 
+# Metrics glossary.
 WES_GLOSSARY = """- MappedFraction: fraction of reads that aligned to the human reference genome
 - DuplicateFraction: fraction of reads that are PCR duplicates (higher = worse library complexity)
 - MedianMAPQ: median mapping quality score (higher = reads mapped more confidently)
@@ -105,22 +95,19 @@ WES_GLOSSARY = """- MappedFraction: fraction of reads that aligned to the human 
 - MedianCoverage: median read depth across targeted exome regions
 - SDCoverage: variability in coverage depth across targets (INFO only, not thresholded)
 - MedianInsertSize: median DNA fragment size in base pairs
-- GCContent: fraction of bases that are G or C (expected ~0.45-0.52 for human exome)
+- GCContent: fraction of bases that are G or C (typically ~0.45-0.52 for human exome; values between 0.35 and 0.60 are treated as acceptable)
 - Mapped: total number of mapped reads (INFO only)
 - DuplicateMarked: total number of duplicate reads (INFO only)"""
-
 WGS_GLOSSARY = """- MappedFraction: fraction of reads that aligned to the human reference genome
 - DuplicateFraction: fraction of reads that are PCR duplicates (higher = worse library complexity; PCR-free genome libraries are normally very low)
 - MedianMAPQ: median mapping quality score (higher = reads mapped more confidently)
 - MedianCoverage: median read depth across the whole genome (not a captured subset)
-- SDCoverage: absolute variability in depth genome-wide (INFO only, not thresholded)
-- CoverageCV: coverage evenness, SDCoverage divided by MedianCoverage. Higher = patchier, less uniform depth across the genome
+- SDCoverage: variability in read depth genome-wide. Higher = patchier, less uniform coverage, with more regions sequenced too shallowly to call variants reliably
 - MedianInsertSize: median DNA fragment size in base pairs
 - GCContent: fraction of bases that are G or C (expected ~0.40-0.42 for the whole human genome)
 - Mapped: total number of mapped reads (INFO only)
 - DuplicateMarked: total number of duplicate reads (INFO only)
 Note: there is no capture or enrichment step in whole genome sequencing, so on-target and enrichment metrics do not apply and are not reported."""
-
 ASSAY_CONFIG = {
     "wes": {
         "label": "Whole Exome Sequencing (WES)",
@@ -129,7 +116,7 @@ ASSAY_CONFIG = {
         "thresholds": WES_QC_THRESHOLDS,
         "info_only": WES_INFO_ONLY,
         "fields": WES_METRIC_FIELDS,
-        "glossary": WES_GLOSSARY,
+        "glossary": WES_GLOSSARY
     },
     "wgs": {
         "label": "Whole Genome Sequencing (WGS)",
@@ -139,15 +126,22 @@ ASSAY_CONFIG = {
         "thresholds": WGS_QC_THRESHOLDS,
         "info_only": WGS_INFO_ONLY,
         "fields": WGS_METRIC_FIELDS,
-        "glossary": WGS_GLOSSARY,
+        "glossary": WGS_GLOSSARY
     },
 }
 
-# Accepted --assay spellings, normalised to canonical keys.
-ASSAY_ALIASES = {
-    "wes": "wes", "exome": "wes", "wxs": "wes", "panel": "wes",
-    "wgs": "wgs", "genome": "wgs",
-}
+# function to load QC JSON; can handle gzip-compressed input
+def load_qc_json(path: str) -> dict:
+    """
+    Alfred writes `*.json.gz` by default, but plain `*.json` is also accepted.
+    Detects gzip by magic bytes rather than by file extension, so mislabelled 
+    or renamed file is handled appropriately.
+    """
+    with open(path, "rb") as fh:
+        is_gzip = fh.read(2) == b"\x1f\x8b"
+    opener = gzip.open if is_gzip else open
+    with opener(path, "rt", encoding="utf-8") as fh:
+        return json.load(fh)
 
 # function to evaluate metrics against thresholds
 def evaluate_metrics(parsed_metrics: dict,
@@ -157,14 +151,12 @@ def evaluate_metrics(parsed_metrics: dict,
     Evaluates each metric against the supplied threshold set.
     Returns {metric_name: {"value": ..., "status": "PASS"|"WARN"|"FAIL"|"INFO"|"MISSING"}}.
     INFO-only metrics are passed through without evaluation.
-    Metrics present in the threshold set but null in the JSON are marked
-    MISSING and treated as WARN in rollup. Metrics absent from the threshold
-    set are skipped entirely (this is how WGS drops capture metrics).
-    Defaults to the WES configuration for backwards compatibility.
+    Metrics present in the threshold set but null in the JSON are marked MISSING and treated 
+    as WARN. Metrics absent from the threshold set are not considered.
+    Defaults to WES configuration.
     """
     thresholds_map = WES_QC_THRESHOLDS if thresholds is None else thresholds
     info_set = WES_INFO_ONLY if info_only is None else info_only
-
     results = {}
     for metric, value in parsed_metrics.items():
         if metric in ("sample_id", "assay_type"):
@@ -177,7 +169,6 @@ def evaluate_metrics(parsed_metrics: dict,
         if value is None:
             results[metric] = {"value": None, "status": "MISSING"}
             continue
-
         t = thresholds_map[metric]
         status = "PASS"
         if "fail_low" in t and value < t["fail_low"]:
@@ -188,7 +179,6 @@ def evaluate_metrics(parsed_metrics: dict,
             status = "FAIL"
         elif "warn_high" in t and value > t["warn_high"]:
             status = "WARN"
-
         results[metric] = {"value": value, "status": status}
     return results
 
@@ -200,7 +190,6 @@ def overall_pass_fail(evaluated: dict) -> str:
     INFO metrics are excluded from rollup.
     """
     statuses = {v["status"] for v in evaluated.values()}
-
     if "FAIL" in statuses:
         return "FAIL"
     elif "WARN" in statuses or "MISSING" in statuses:
@@ -208,57 +197,30 @@ def overall_pass_fail(evaluated: dict) -> str:
     else:
         return "PASS"
 
-
-# NODE 0 — ASSAY ROUTER
+# NODE 1 — ASSAY ROUTER
 def route_assay(state: QCState) -> QCState:
     """
-    Normalises the requested assay type and writes it back to state.
+    Validates the requested assay type and writes it back to state.
     Runs first so that downstream nodes can rely on state["assay_type"]
-    being a canonical key of ASSAY_CONFIG.
+    being a key of ASSAY_CONFIG.
     """
-    requested = (state.get("assay_type") or "wes").strip().lower()
-    assay = ASSAY_ALIASES.get(requested)
-    if assay is None:
-        valid = ", ".join(sorted(set(ASSAY_ALIASES)))
-        raise ValueError(f"Unknown assay type '{requested}'. Valid values: {valid}")
+    assay = (state.get("assay_type") or "wes").strip().lower()
+    if assay not in ASSAY_CONFIG:
+        valid = ", ".join(sorted(ASSAY_CONFIG))
+        raise ValueError(f"Unknown assay type '{assay}'. Valid values: {valid}")
     return {**state, "assay_type": assay}
 
-
 def assay_branch(state: QCState) -> str:
-    """Conditional-edge selector: returns the canonical assay key."""
+    """Conditional-edge selector: returns the assay key."""
     return state["assay_type"]
-
-
-def _compute_coverage_cv(median_cov, sd_cov):
-    """
-    Coverage evenness = SDCoverage / MedianCoverage. Returns None if either
-    input is missing or the median is non-positive, which surfaces as MISSING
-    rather than raising.
-    """
-    if median_cov is None or sd_cov is None:
-        return None
-    try:
-        if float(median_cov) <= 0:
-            return None
-        return round(float(sd_cov) / float(median_cov), 3)
-    except (TypeError, ValueError, ZeroDivisionError):
-        return None
-
 
 def _parse_qc(state: QCState, assay: str) -> QCState:
     """Shared parse/evaluate logic, parameterised by assay type."""
     raw = state["raw_input"]
     cfg = ASSAY_CONFIG[assay]
-
     metrics = {"sample_id": raw.get("sample_id", "Unknown Sample")}
     for field in cfg["fields"]:
-        if field == "CoverageCV":
-            metrics[field] = _compute_coverage_cv(
-                raw.get("MedianCoverage"), raw.get("SDCoverage")
-            )
-        else:
-            metrics[field] = raw.get(field)
-
+        metrics[field] = raw.get(field)
     evaluated = evaluate_metrics(metrics, cfg["thresholds"], cfg["info_only"])
     verdict = overall_pass_fail(evaluated)
     metrics["evaluated"] = evaluated
@@ -267,27 +229,17 @@ def _parse_qc(state: QCState, assay: str) -> QCState:
     metrics["assay_label"] = cfg["label"]
     return {**state, "parsed_metrics": metrics, "pass_fail": verdict}
 
-
-# NODE 1a — WES PARSE
+# NODE 2a — WES PARSE
 def parse_qc_wes(state: QCState) -> QCState:
-    """Extract and evaluate exome QC metrics (capture-aware)."""
+    """Extract and evaluate exome QC metrics."""
     return _parse_qc(state, "wes")
 
-
-# NODE 1b — WGS PARSE  <-- the new node
+# NODE 2b — WGS PARSE
 def parse_qc_wgs(state: QCState) -> QCState:
-    """
-    Extract and evaluate whole-genome QC metrics.
-    Skips capture metrics entirely and derives CoverageCV for evenness.
-    """
+    """Extract and evaluate whole-genome QC metrics."""
     return _parse_qc(state, "wgs")
 
-
-# Backwards-compatible alias: existing imports of parse_qc_metrics still work.
-parse_qc_metrics = parse_qc_wes
-
-
-# NODE 2
+# NODE 3
 # function: generate QC summary in natural language
 def generate_llm_summary(state: QCState) -> QCState:
     """Use an LLM to generate a plain-English QC summary."""
@@ -298,15 +250,13 @@ def generate_llm_summary(state: QCState) -> QCState:
     #   Google:    GOOGLE_API_KEY
     llm = init_chat_model(
         model=state["model_name"],
-        model_provider=state["model_provider"] if state["model_provider"] else None,
+        model_provider=state.get("model_provider") or None,
         temperature=0.3,
         max_tokens=1500,
     )
-
     metrics = state["parsed_metrics"]
     evaluated = metrics["evaluated"]
     cfg = ASSAY_CONFIG[state.get("assay_type", "wes")]
-
     # Build readable metric block for prompt
     metric_lines = []
     for metric, result in evaluated.items():
@@ -316,7 +266,6 @@ def generate_llm_summary(state: QCState) -> QCState:
             metric_lines.append(f"  - {metric}: {value} [{status}]")
         else:
             metric_lines.append(f"  - {metric}: Not available [{status}]")
-
     prompt = f"""You are a senior bioinformatician reviewing sequencing QC metrics for a research collaborator 
 who is an expert biologist but has no computational background. Your job is to explain whether 
 this sample passed quality control and what the results mean for their downstream analysis.
@@ -336,20 +285,17 @@ Please write a short plain prose response (no numbered lists, no bullet points) 
 - Any recommended actions if there are issues
 Keep the total response under 120 words.
 """
-
     response = llm.invoke(prompt)
     summary = response.content.strip()
     return {**state, "llm_summary": summary}
 
-
-# NODE 3
-# function: combine QC metrics & LLM summary into clean human-readable report
+# NODE 4
+# function: combine QC metrics & LLM summary into a clean human-readable report
 def format_report(state: QCState) -> QCState:
     """Assemble the final human-readable QC report."""
     metrics = state["parsed_metrics"]
     evaluated = metrics["evaluated"]
     status_emoji = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}.get(state["pass_fail"], "")
-
     # Build metrics table with per-metric status indicators
     metric_lines = []
     for metric, result in evaluated.items():
@@ -360,7 +306,6 @@ def format_report(state: QCState) -> QCState:
             metric_lines.append(f"  {icon} {metric:<22} {value}")
         else:
             metric_lines.append(f"  {icon} {metric:<22} N/A")
-
     assay_label = metrics.get("assay_label", "Whole Exome Sequencing (WES)")
     report = f"""
 ================================================================================
@@ -368,21 +313,16 @@ def format_report(state: QCState) -> QCState:
   Assay: {assay_label}
   Overall Status: {status_emoji} {state['pass_fail']}
 ================================================================================
-
 METRICS SUMMARY
 ---------------
 {chr(10).join(metric_lines)}
-
   Legend: ✅ PASS  ⚠️ WARN  ❌ FAIL  ℹ️ INFO (not thresholded)  ❓ MISSING
-
 BIOLOGICAL INTERPRETATION
 -----------------------------------
 {state['llm_summary']}
-
 ================================================================================
 """
     return {**state, "output_report": report}
-
 
 # function: Build LangGraph
 def build_graph() -> StateGraph:
@@ -396,7 +336,6 @@ def build_graph() -> StateGraph:
     graph.add_node("parse_qc_wgs", parse_qc_wgs)
     graph.add_node("llm_summary", generate_llm_summary)
     graph.add_node("format_report", format_report)
-
     graph.set_entry_point("route_assay")
     graph.add_conditional_edges(
         "route_assay",
@@ -412,20 +351,17 @@ def build_graph() -> StateGraph:
 # Main function
 def main():
     parser = argparse.ArgumentParser(description="LangGraph QC Interpreter Agent")
-    parser.add_argument("--input", required=True, help="Path to QC JSON file")
+    parser.add_argument("--input", required=True, help="Path to QC JSON file (.json or .json.gz)")
     parser.add_argument("--output", default=None, help="Optional path to save report")
     parser.add_argument("--model", default="gemini-2.5-flash", help="LLM model name (default: gemini-2.5-flash)")
     parser.add_argument("--provider", default="google_genai",
                         help="LLM provider: openai, anthropic, google_genai, etc. "
                              "Optional — init_chat_model infers from model name if not set.")
-    parser.add_argument("--assay", default="wes", choices=["wes", "wgs", "exome", "genome", "wxs", "panel"],
+    parser.add_argument("--assay", default="wes", choices=["wes", "wgs"], type=str.lower,
                         help="Assay type, selects threshold set and interpretation context "
                              "(default: wes)")
     args = parser.parse_args()
-
-    with open(args.input) as f:
-        qc_data = json.load(f)
-
+    qc_data = load_qc_json(args.input)
     graph = build_graph()
     result = graph.invoke({
         "raw_input": qc_data,
@@ -433,14 +369,11 @@ def main():
         "model_provider": args.provider,
         "assay_type": args.assay,
     })
-
     print(result["output_report"])
-
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(result["output_report"])
         print(f"Report saved to {args.output}")
-
 
 if __name__ == "__main__":
     main()

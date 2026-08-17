@@ -1,14 +1,12 @@
 # QC Interpreter Agent
 
-Whole exome sequencing captures the protein-coding regions of the human genome, and whole genome sequencing captures the genome in its entirety — both are widely used in disease research and clinical genomics, but raw sequencing data must pass rigorous quality checks before any biological conclusions can be drawn.
+Whole exome sequencing captures the protein-coding regions of the human genome, and whole genome sequencing captures the genome in its entirety. Both are widely used in disease research and clinical genomics, but raw sequencing data must pass rigorous quality checks before any biological conclusions can be drawn.
 This agent is a LangGraph-based agentic workflow that parses sequencing Quality Control (QC) metrics and uses an LLM to generate plain-English summaries for non-computational research collaborators. It is built to support Illumina 30x coverage Whole Exome Sequencing (WES) and Whole Genome Sequencing (WGS) data alignment assessed using Alfred — an efficient and versatile BAM (Binary Alignment Map) alignment QC tool.
-
 
 ## Purpose
 
-In genomics research, QC reports are full of technical metrics (mapping rates, duplication rates, coverage depth) that are essential for bioinformaticians but opaque to bench scientists and clinicians. This agent bridges that gap by automatically interpreting QC outputs and producing clear, actionable summaries — keeping scientific discussions focused on biology rather than the pipeline.
+In genomics research, QC reports summarize technical metrics (mapping rates, duplication rates, coverage depth) that are essential for bioinformaticians but opaque to bench scientists and clinicians. This agent bridges that gap by interpreting QC outputs and producing clear, actionable summaries in order to keep scientific discussions focused on biology rather than the pipeline.
 WES and WGS have different quality expectations, so `--assay` routes the sample down an assay-specific branch with its own thresholds, metric list, and LLM glossary.
-
 
 ## Architecture
 
@@ -19,13 +17,12 @@ Five LangGraph nodes, branching on assay type:
                 └→ [parse_qc_wgs] ┘
 ```
 
-1. **route_assay** — Normalizes the requested assay against a table of accepted aliases and writes the canonical key (`wes` or `wgs`) to state, so downstream nodes can assume a valid value
-2. **parse_qc_wes** — Loads exome metrics from JSON, evaluates against the capture-aware WES thresholds, and flags any issues
-3. **parse_qc_wgs** — Loads genome metrics, skips capture metrics entirely, derives `CoverageCV`, and evaluates against WGS thresholds
-4. **llm_summary** — Sends structured metrics and the assay-specific glossary to an LLM with a bioinformatics-aware prompt to generate a plain-English interpretation
-5. **format_report** — Assembles a clean, human-readable report combining raw metrics and the LLM summary
-Both parse nodes share one `_parse_qc` implementation parameterized by assay, so the two paths can't drift apart in their evaluation or rollup logic.
-
+1. **route_assay** — Validates the requested assay type against the assay configuration and writes it to state, so downstream 
+   nodes can assume a valid value.
+2. **parse_qc_wes** — Loads exome metrics from JSON, evaluates against the capture-aware WES thresholds, and flags any issues.
+3. **parse_qc_wgs** — Loads genome metrics and evaluates against WGS thresholds.
+4. **llm_summary** — Sends structured metrics and the assay-specific glossary to an LLM with a bioinformatics-aware prompt to generate a plain-English interpretation.
+5. **format_report** — Assembles a clean, human-readable report combining raw metrics and the LLM summary.
 
 ## Setup
 Clone this repository using instructions found here [GitHub Docs: Cloning a Repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository). Navigate to the main directory in your user interface of choice.
@@ -52,25 +49,25 @@ On Windows (PowerShell):
 $env:GOOGLE_API_KEY = "your-key-here"
 ```
 
-Note: Google Gemini is the default LLM provider because it offers a free API tier through Google AI Studio with no billing or credit card required, making this tool accessible without any upfront cost. OpenAI and Anthropic are supported as alternatives but require paid API access.
+Note: Google Gemini is the default LLM provider because it offers a free API tier through Google AI Studio, making this tool accessible without any upfront cost. OpenAI and Anthropic are supported as alternatives but require paid API access.
 
 
 ## Usage
 
 ```bash
 # Basic usage (uses gemini-2.5-flash and WES thresholds by default)
-python qc_agent.py --input sample_qc.json
+python qc_agent.py --input sample_qc.json.gz
 # Whole Genome Sequencing
-python qc_agent.py --input sample_wgs_qc.json --assay wgs
+python qc_agent.py --input sample_wgs_qc.json.gz --assay wgs
 # Save report to file
-python qc_agent.py --input sample_qc.json --output report.txt
+python qc_agent.py --input sample_qc.json.gz --output report.txt
 # Use a different model
-python qc_agent.py --input sample_qc.json --model gemini-2.5-flash
-python qc_agent.py --input sample_qc.json --model gpt-4o --provider openai
-python qc_agent.py --input sample_qc.json --model claude-3-5-sonnet-20241022 --provider anthropic
+python qc_agent.py --input sample_qc.json.gz --model gemini-2.5-flash
+python qc_agent.py --input sample_qc.json.gz --model gpt-4o --provider openai
+python qc_agent.py --input sample_qc.json.gz --model claude-3-5-sonnet-20241022 --provider anthropic
 ```
 
-`--assay` accepts `wes` (default), `exome`, `wxs`, and `panel` for the WES thresholds, or `wgs` and `genome` for WGS. `panel` is a convenience alias only — panels are usually sequenced much deeper than 30x, so the WES coverage thresholds will be lenient.
+`--assay` Accepts `wes` (default) for the WES thresholds, or `wgs` for WGS, case insensitive.
 
 
 ## Input Format
@@ -87,13 +84,10 @@ For WGS, omit `-b` — there are no capture targets:
 alfred qc -r ref.fa -j qc.json.gz sample.bam
 ```
 
-The agent expects an unzipped `.json` file. Alfred outputs `.json.gz` by default — remember to unzip before running:
+The agent can take in the default Alfred output `.json.gz` or an unzipped `.json` file.
 
-```bash
-gunzip qc.json.gz
-```
-
-The following fields are used (all optional except `sample_id`):
+All fields are optional. `sample_id` falls back to `Unknown Sample` if absent, and
+any missing thresholded metric is reported as MISSING and contributes a WARN.
 
 ```json
 {
@@ -113,9 +107,7 @@ The following fields are used (all optional except `sample_id`):
 }
 ```
 
-`FractionInBed` and `EnrichmentOverBed` require the `-b` flag. In WES mode, if absent they will be flagged as MISSING and contribute a WARN to the overall verdict. In WGS mode they are never read, so their absence carries no penalty.
-`CoverageCV` is derived rather than supplied — it is computed as `SDCoverage / MedianCoverage`. If either input is missing or the median is non-positive it resolves to MISSING and contributes a WARN, rather than raising.
-
+`FractionInBed` and `EnrichmentOverBed` require the `-b` flag. In WES mode, if absent they will be flagged as MISSING and contribute a WARN to the overall verdict.
 
 ## QC Thresholds
 
@@ -139,12 +131,11 @@ Thresholds are calibrated for 30x Illumina human data and selected by `--assay`.
 | DuplicateFraction | >0.20 | >0.30 |
 | MedianMAPQ | <30 | <20 |
 | MedianCoverage | <25x | <15x |
-| CoverageCV | >0.35 | >0.50 |
+| SDCoverage | >10x | >15x |
 | GCContent | <0.38 or >0.45 | <0.34 or >0.50 |
 
-The WGS set differs deliberately: capture metrics are absent rather than demoted, since there's no capture step to assess; duplication is tighter because PCR-free genome libraries typically run 1–10%; coverage and GC are recentered on genome-wide values; and `CoverageCV` is promoted to a thresholded metric, because coverage evenness is far more diagnostic genome-wide than over small capture targets.
-The following metrics are reported as context only and do not affect the verdict: `Mapped`, `DuplicateMarked`, `SDCoverage`, `MedianInsertSize`, `SDInsertSize`. `SDCoverage` stays INFO-only even in WGS mode — its normalized form, `CoverageCV`, carries the graded signal instead.
-
+The following metrics are reported as context only and do not affect the verdict: `Mapped`, `DuplicateMarked`, `SDCoverage`, `MedianInsertSize`, `SDInsertSize`. `SDCoverage` is context-only in WES mode but thresholded in WGS mode, where coverage 
+evenness is more diagnostic genome-wide than over small capture targets.
 
 ## Example Output
 
@@ -185,7 +176,6 @@ for future runs.
 ## Extensions (future work)
 
 - Batch processing across multiple samples
-- Gzip input support (`*.json.gz`) directly
 - Mermaid workflow diagram: Once the program supports more analysis types, documenting the exact nodes for a workflow will become more critical.
 - Email notification integration
 - Interactive HTML report output to improve visual appeal
