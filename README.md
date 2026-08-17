@@ -175,8 +175,10 @@ for future runs.
 
 ## Extensions (future work)
 
-- Batch processing across multiple samples
+- ~~Support `.json.gz` input files.~~
+- ~~Process WGS samples~~
+- ~~Markdown report output to improve visual appeal~~
+- Batch processing across multiple samples.
 - Mermaid workflow diagram: Once the program supports more analysis types, documenting the exact nodes for a workflow will become more critical.
-- Email notification integration
-- Interactive HTML report output to improve visual appeal
-- RAG over internal QC history to contextualize current sample against cohort
+- Email notification integration.
+- RAG over past Alfred QC outputs to contextualize current sample against cohort.
