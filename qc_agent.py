@@ -5,7 +5,7 @@
 # DESCRIPTION
 # QC Tool: Alfred is an efficient and versatile BAM alignment QC tool.
 # Input:
-# - Alfred BAM alignment QC `*.json.gz` (or `*.json`) output file from 30x Illumina whole exome (WES) 
+# - Alfred BAM alignment QC `*.json.gz` or `*.json` output file from 30x Illumina whole exome (WES) 
 #   or whole genome (WGS) sequencing on human data.
 # - Assay type is selected with --assay and determines the threshold set, which metrics are reported, 
 #  and the interpretation context given to the LLM.
@@ -13,6 +13,7 @@
 #   by LangChain (OpenAI, Anthropic etc.).
 # Output: Report including PASS/WARN/FAIL status and plain English summary.
 # Usage:
+#   python qc_agent.py --input sample_qc.json
 #   python qc_agent.py --input sample_qc.json.gz
 #   python qc_agent.py --input sample_qc.json.gz --output report.md
 #   python qc_agent.py --input sample_qc.json.gz --assay wgs
@@ -34,20 +35,20 @@ from langchain.chat_models import init_chat_model
 # STATE
 class QCState(TypedDict):
     raw_input: dict          # Raw QC JSON loaded from file
-    parsed_metrics: dict     # Cleaned structured QC metrics
+    parsed_metrics: dict     # Structured QC metrics
     llm_summary: str         # Natural language LLM output
     pass_fail: str           # "PASS", "WARN", or "FAIL" status
     output_report: str       # Final report
-    model_name: str          # LLM model name passed through state
-    model_provider: str      # LLM provider passed through state
-    assay_type: str          # "wes" or "wgs" — selects threshold set and prompt
+    model_name: str          # LLM model name
+    model_provider: str      # LLM provider
+    assay_type: str          # "wes" or "wgs"
 
 # ---------------------------------------------------------------------------
 # ASSAY CONFIGURATION
 # Each assay defines its own threshold set and LLM prompt glossary. Fraction metrics are 0-1.
 # ---------------------------------------------------------------------------
 
-# QC Metric thresholds calibrated for 30x Illumina whole EXOME sequencing on human data.
+# QC Metric thresholds calibrated for 30x Illumina WES on human data.
 WES_QC_THRESHOLDS = {
     "MappedFraction":    {"warn_low": 0.75, "fail_low": 0.50},    # alignment quality
     "DuplicateFraction": {"warn_high": 0.35, "fail_high": 0.50},  # library complexity
@@ -59,7 +60,7 @@ WES_QC_THRESHOLDS = {
                           "warn_high": 0.60, "fail_high": 0.80},
 }
 
-# QC Metric thresholds calibrated for 30x Illumina whole GENOME sequencing on human data.
+# QC Metric thresholds calibrated for 30x Illumina WGS on human data.
 WGS_QC_THRESHOLDS = {
     "MappedFraction":    {"warn_low": 0.75, "fail_low": 0.50},
     "DuplicateFraction": {"warn_high": 0.20, "fail_high": 0.30},
@@ -80,22 +81,22 @@ WGS_INFO_ONLY = {"Mapped", "DuplicateMarked", "MedianInsertSize",
 WES_METRIC_FIELDS = [
     "Mapped", "MappedFraction", "DuplicateMarked", "DuplicateFraction",
     "MedianMAPQ", "FractionInBed", "MedianCoverage", "SDCoverage",
-    "EnrichmentOverBed", "MedianInsertSize", "SDInsertSize", "GCContent",
+    "EnrichmentOverBed", "MedianInsertSize", "SDInsertSize", "GCContent"
 ]
 WGS_METRIC_FIELDS = [
     "Mapped", "MappedFraction", "DuplicateMarked", "DuplicateFraction",
     "MedianMAPQ", "MedianCoverage", "SDCoverage", "MedianInsertSize", 
-    "SDInsertSize", "GCContent",
+    "SDInsertSize", "GCContent"
 ]
 
 # Metrics glossary.
-WES_GLOSSARY = """- MappedFraction: fraction of reads that aligned to the human reference genome
-- DuplicateFraction: fraction of reads that are PCR duplicates (higher = worse library complexity)
-- MedianMAPQ: median mapping quality score (higher = reads mapped more confidently)
-- FractionInBed: fraction of reads landing on exome target regions (on-target rate)
-- EnrichmentOverBed: fold enrichment of target (exon) regions over background genome
-- MedianCoverage: median read depth across targeted exome regions
-- SDCoverage: variability in coverage depth across targets (INFO only, not thresholded)
+WES_GLOSSARY = """- MappedFraction: fraction of reads that aligned to the human reference genome.
+- DuplicateFraction: fraction of reads that are PCR duplicates (higher = worse library complexity).
+- MedianMAPQ: median mapping quality score (higher = reads mapped more confidently).
+- FractionInBed: fraction of reads landing on exome target regions (on-target rate).
+- EnrichmentOverBed: fold enrichment of target (exon) regions over background genome.
+- MedianCoverage: median read depth across targeted exome regions.
+- SDCoverage: variability in coverage depth across targets (INFO only, not thresholded).
 - MedianInsertSize: median DNA fragment size in base pairs
 - GCContent: fraction of bases that are G or C (typically ~0.45-0.52 for human exome; values between 0.35 and 0.60 are treated as acceptable)
 - Mapped: total number of mapped reads (INFO only)
@@ -135,7 +136,7 @@ ASSAY_CONFIG = {
 # function to load QC JSON; can handle gzip-compressed input
 def load_qc_json(path: str) -> dict:
     """
-    Alfred writes `*.json.gz` by default, but plain `*.json` is also accepted.
+    Alfred outputs `*.json.gz` by default, and this script also accepts gunzipped `*.json`.
     Detects gzip by magic bytes rather than by file extension, so mislabelled 
     or renamed file is handled appropriately.
     """
