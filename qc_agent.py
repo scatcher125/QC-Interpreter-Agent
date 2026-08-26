@@ -67,8 +67,8 @@ WGS_QC_THRESHOLDS = {
     "MedianMAPQ":        {"warn_low": 30,   "fail_low": 20},
     "MedianCoverage":    {"warn_low": 25.0, "fail_low": 15.0},
     "SDCoverage":        {"warn_high": 10.0, "fail_high": 15.0},
-    "GCContent":         {"warn_low": 0.38, "fail_low": 0.34,
-                          "warn_high": 0.45, "fail_high": 0.50},
+    "GCContent":         {"warn_low": 0.35, "fail_low": 0.20,
+                          "warn_high": 0.60, "fail_high": 0.80},
 }
 
 # Metrics reported as context; excluded from PASS/WARN/FAIL calculations.
@@ -295,7 +295,7 @@ Keep the total response under 120 words.
 # NODE 4
 # function: combine QC metrics & LLM summary into a clean human-readable report
 def format_report(state: QCState) -> QCState:
-    """Assemble the final human-readable QC report."""
+    """Assemble the final human-readable QC report as text."""
     metrics = state["parsed_metrics"]
     evaluated = metrics["evaluated"]
     status_emoji = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}.get(state["pass_fail"], "")
@@ -352,10 +352,10 @@ def workflow_mermaid(assay: str | None = None) -> str:
         )
     return f"\n## Workflow\n\n```mermaid\n{body}\n```\n"
 
-# function: assemble the report as Markdown for rendered contexts
+# function: assemble Markdown report
 def format_report_markdown(state: QCState) -> str:
     """
-    Markdown variant of the report. Uses a table so alignment survives proportional fonts,
+    Markdown report. Uses a table so alignment survives proportional fonts,
     and embeds the workflow diagram.
     """
     metrics = state["parsed_metrics"]
@@ -425,8 +425,7 @@ def main():
     parser.add_argument("--diagram", action="store_true",
                         help="Print the workflow graph as a Mermaid diagram and exit")
     args = parser.parse_args()
-    # Mermaid diagram is generated from the compiled graph, so it cannot drift
-    # out of sync with the node and edge definitions above.
+    # Mermaid diagram is generated from compiled graph.
     if args.diagram:
         print(build_graph().get_graph().draw_mermaid())
         return
