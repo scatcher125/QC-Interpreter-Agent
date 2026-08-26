@@ -176,3 +176,5 @@ for future runs.
 - ~~Mermaid workflow diagram: Once the program supports more analysis types, documenting the exact nodes for a workflow will become more critical.~~
 - Email notification integration.
 - RAG over past Alfred QC outputs to contextualize current sample against cohort.
+- Node to support Picard QC metrics from WES
+- Node to support Picard QC metrics from WES
